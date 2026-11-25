@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Know Thyself – Adaptive Day Planner</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1c2230;--mu:#6b7385;--ac:#4f46e5;--ok:#16a34a;--wa:#d97706;--bd:#e3e6ec;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151c;--card:#1b2030;--tx:#e8ebf3;--mu:#98a1b6;--ac:#8b85ff;--bd:#2c3347}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,sans-serif}
+main{max-width:760px;margin:auto;padding:16px}h1{font-size:22px;margin:4px 0}h2{font-size:16px;margin:0 0 10px}
+.sub{color:var(--mu);margin-bottom:14px}.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}label{font-size:13px;color:var(--mu)}
+input,select,button{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+input[type=range]{padding:0;width:150px}button{background:var(--ac);color:#fff;border:0;cursor:pointer}button.g{background:var(--bg);color:var(--tx);border:1px solid var(--bd)}
+.slot{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--bd)}.slot:last-child{border:0}.t{width:56px;color:var(--mu);font-variant-numeric:tabular-nums}
+.tag{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--bd);margin-left:6px}.work{color:var(--ok)}.food{color:var(--wa)}
+.msg{padding:8px 10px;border-radius:8px;background:var(--bg);margin-top:6px;font-size:14px}.tab{overflow-x:auto}
+</style></head><body><main>
+<h1>Know Thyself</h1><div class="sub">Your day re-plans itself around your energy, sleep and changing tasks. Prototype: runs fully in your browser, no data leaves your device.</div>
+
+<div class="card"><h2>1 · Morning check-in (30 seconds)</h2>
+<div class="row"><label>Sleep (hrs) <input id="sleep" type="number" step="0.5" value="6" style="width:70px"></label>
+<label>Energy 1–5 <input id="energy" type="range" min="1" max="5" value="3"></label>
+<label>Resting HR <input id="rhr" type="number" value="64" style="width:70px"></label>
+<label>Wake <input id="wake" type="time" value="07:00"></label></div></div>
+
+<div class="card"><h2>2 · Today's tasks (change anytime)</h2>
+<div class="row"><input id="tn" placeholder="Task name" style="flex:1;min-width:140px">
+<select id="tm"><option value="30">30m</option><option value="60" selected>1h</option><option value="90">90m</option><option value="120">2h</option></select>
+<select id="tp"><option value="3">High</option><option value="2" selected>Medium</option><option value="1">Low</option></select>
+<label><input type="checkbox" id="tf"> fixed time</label><input id="tt" type="time" value="14:00">
+<button onclick="addT()">Add</button></div><div id="tl"></div></div>
+
+<div class="card"><h2>3 · Surprise! Something changed</h2>
+<div class="row"><button class="g" onclick="evt('meeting')">Urgent meeting (1h, 3pm)</button>
+<button class="g" onclick="evt('late')">Running 90 min late</button>
+<button class="g" onclick="evt('tired')">Feeling drained</button>
+<button class="g" onclick="evt('reset')">Reset</button></div><div id="log"></div></div>
+
+<div class="card"><h2>4 · Your adaptive plan</h2><div id="plan" class="tab"></div></div>
+<div class="card"><h2>5 · Weekly insight (vs your own baseline)</h2><div id="ins"></div>
+<div class="row" style="margin-top:8px"><button onclick="save()">Save today to history</button><span id="hs" class="sub" style="margin:0"></span></div></div>
+</main>
+<script>
+var tasks=[{n:"Finish assignment",m:120,p:3,f:0},{n:"Reply to emails",m:30,p:1,f:0},{n:"Team call",m:60,p:2,f:1,t:"11:00"}];
+var shift=0,drain=0,notes=[],hist=[];
+try{hist=JSON.parse(localStorage.getItem("kt")||"[]")}catch(e){}
+function mins(t){var a=t.split(":");return +a[0]*60+ +a[1]}
+function fmt(m){m=Math.max(0,m);return String(Math.floor(m/60)%24).padStart(2,"0")+":"+String(m%60).padStart(2,"0")}
+function $(i){return document.getElementById(i)}
+function addT(){var n=$("tn").value.trim();if(!n)return;var f=$("tf").checked;tasks.push({n:n,m:+$("tm").value,p:+$("tp").value,f:f?1:0,t:$("tt").value});$("tn").value="";notes.push("Added “"+n+"” – plan rebuilt.");go()}
+function rm(i){tasks.splice(i,1);go()}
+function evt(k){if(k=="meeting"){tasks.push({n:"Urgent meeting",m:60,p:3,f:1,t:"15:00"});notes.push("Urgent meeting inserted at 15:00. Lowest-priority tasks moved or dropped; workout shortened if needed.")}
+if(k=="late"){shift+=90;notes.push("Day starts 90 min later. Everything shifted; lunch and workout kept at sensible hours.")}
+if(k=="tired"){drain=1;notes.push("Low energy: workout swapped to light walk + stretch, hard task moved to your best slot, extra rest added.")}
+if(k=="reset"){tasks=[{n:"Finish assignment",m:120,p:3,f:0},{n:"Reply to emails",m:30,p:1,f:0},{n:"Team call",m:60,p:2,f:1,t:"11:00"}];shift=0;drain=0;notes=[]}go()}
+function build(){
+ var sl=+$("sleep").value,en=+$("energy").value-drain*2,rhr=+$("rhr").value,base=64;en=Math.max(1,en);
+ var low=sl<6.5||en<=2||rhr>base+5;var start=mins($("wake").value)+60+shift,end=22*60;
+ var blocks=[];var busy=[];
+ function put(n,s,m,ty){blocks.push({n:n,s:s,m:m,ty:ty});busy.push([s,s+m])}
+ function free(s,m){for(var i=0;i<busy.length;i++){if(s<busy[i][1]&&s+m>busy[i][0])return busy[i][1]}return -1}
+ function place(n,pref,m,ty){var s=Math.max(pref,start);var g=0;while(g++<60){var c=free(s,m);if(c<0)break;s=c}
+  if(s+m>end)return false;put(n,s,m,ty);return true}
+ put("Breakfast (protein + fruit)",start-30>0?start-30:start,30,"food");
+ tasks.filter(function(t){return t.f}).forEach(function(t){put(t.n,mins(t.t),t.m,"fixed")});
+ var lunch=Math.max(12*60+30,start+240);put("Lunch (balanced, "+(low?"extra carbs for energy":"normal")+")",lunch,40,"food");
+ var peak=en>=4?9*60:en==3?10*60:11*60;var dropped=[];
+ tasks.filter(function(t){return !t.f}).sort(function(a,b){return b.p-a.p}).forEach(function(t){
+  if(!place(t.n,t.p==3?peak:13*60,t.m,"task"))dropped.push(t.n)});
+ var wm=low?25:45,wn=low?"Light walk + stretching (recovery day)":"Workout: strength / cardio";
+ if(!place(wn,17*60+30,wm,"work")&&!place(wn,15*60,wm,"work"))place("Quick 15 min walk",18*60,15,"work");
+ place("Dinner (light, high protein)",19*60+30,40,"food");
+ place("Wind-down: no screens",22*60-30,30,"rest");
+ blocks.sort(function(a,b){return a.s-b.s});return {b:blocks,d:dropped,low:low}}
+function go(){
+ var r=build(),h="";
+ r.b.forEach(function(x){var c=x.ty=="work"?"work":x.ty=="food"?"food":"";h+='<div class="slot"><div class="t">'+fmt(x.s)+'</div><div class="'+c+'">'+x.n+'<span class="tag">'+x.m+'m</span></div></div>'});
+ $("plan").innerHTML=h;
+ var l="";notes.slice(-3).forEach(function(n){l+='<div class="msg">'+n+'</div>'});
+ if(r.d.length)l+='<div class="msg">⚠ No room today, moved to tomorrow: '+r.d.join(", ")+'</div>';
+ if(r.low)l+='<div class="msg">Early-warning: your sleep/energy/heart rate is outside your normal range, so the plan is lighter.</div>';
+ $("log").innerHTML=l;
+ var t="";tasks.forEach(function(x,i){t+='<div class="slot"><div style="flex:1">'+x.n+'<span class="tag">'+x.m+'m</span>'+(x.f?'<span class="tag">'+x.t+'</span>':'')+'</div><button class="g" onclick="rm('+i+')">×</button></div>'});
+ $("tl").innerHTML=t;insight()}
+function save(){hist.push({d:new Date().toISOString().slice(0,10),s:+$("sleep").value,e:+$("energy").value,h:+$("rhr").value});hist=hist.slice(-30);try{localStorage.setItem("kt",JSON.stringify(hist))}catch(e){}insight()}
+function avg(a,k){return a.length?a.reduce(function(s,x){return s+x[k]},0)/a.length:0}
+function insight(){
+ $("hs").textContent=hist.length+" day(s) saved";
+ if(hist.length<3){$("ins").innerHTML='<div class="msg">Save 3+ days to unlock insights. Add your daily check-ins to build your personal baseline.</div>';return}
+ var all=hist,rec=hist.slice(-3),bs=avg(all,"s"),rs=avg(rec,"s"),be=avg(all,"e"),re=avg(rec,"e"),h="";
+ h+='<div class="msg">Sleep: last 3 days '+rs.toFixed(1)+'h vs your baseline '+bs.toFixed(1)+'h.</div>';
+ h+='<div class="msg">Energy: '+re.toFixed(1)+' vs baseline '+be.toFixed(1)+'.</div>';
+ var gd=all.filter(function(x){return x.s>=7}),bd=all.filter(function(x){return x.s<7});
+ if(gd.length&&bd.length)h+='<div class="msg">On 7h+ nights your energy averages '+avg(gd,"e").toFixed(1)+' vs '+avg(bd,"e").toFixed(1)+' on shorter nights.</div>';
+ if(rs<bs-0.7)h+='<div class="msg">⚠ Sleep trending down. Consider an earlier wind-down tonight.</div>';
+ $("ins").innerHTML=h}
+go();
+</script></body></html>
